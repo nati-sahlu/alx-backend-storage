@@ -1,32 +1,47 @@
 #!/usr/bin/env python3
-""" nginx logs to mongo instance parser """
-
+"""
+Provide some stats about Nginx logs stored in MongoDB
+Database: logs, Collection: nginx, Display same as example
+first line: x logs, x number of documents in this collection
+second line: Methods
+5 lines with method = ["GET", "POST", "PUT", "PATCH", "DELETE"]
+one line with method=GET, path=/status
+improve by adding top 10 most present IPs in collection nginx
+database logs
+"""
 from pymongo import MongoClient
 
 
-def temp_F():
-    """ temp function to check the checker"""
-    client = MongoClient()
-    main = client.logs.nginx
-    method_C = ["GET", "POST", "PUT", "PATCH", "DELETE"]
-    status = main.count_documents({"method": "GET", "path": "/status"})
-    print(f"{main.estimated_document_count()} logs")
+METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE"]
+PIPE = [{"$group": {"_id": "$ip", "count": {"$sum": 1}}},
+        {"$sort": {"count": -1}}, {"$limit": 10}]
+
+
+def log_stats(mongo_collection, option=None):
+    """
+    Prototype: def log_stats(mongo_collection, option=None):
+    Provide some stats about Nginx logs stored in MongoDB
+    """
+    items = {}
+    if option:
+        value = mongo_collection.count_documents(
+            {"method": {"$regex": option}})
+        print(f"\tmethod {option}: {value}")
+        return
+
+    result = mongo_collection.count_documents(items)
+    print(f"{result} logs")
     print("Methods:")
-    for i in method_C:
-        check = main.count_documents({"method": i})
-        print(f"\tmethod {i}: {check}")
-    print(f"{status} status check")
-    count = 0
-    aggr = [{"$group": {"_id": '$ip', "c": {"$sum": 1}}}, {"$sort": {"c": -1}}]
-    db = client.logs
-    ip = {x["_id"]: x["c"] for x in db.nginx.aggregate(aggr)}
+    for method in METHODS:
+        log_stats(nginx_collection, method)
+    status_check = mongo_collection.count_documents({"path": "/status"})
+    print(f"{status_check} status check")
     print("IPs:")
-    for key, value in ip.items():
-        if count > 9:
-            break
-        count += 1
-        print(f"\t{key}: {value}")
+
+    for ip in mongo_collection.aggregate(PIPE):
+        print(f"\t{ip.get('_id')}: {ip.get('count')}")
 
 
 if __name__ == "__main__":
-    temp_F()
+    nginx_collection = MongoClient('mongodb://127.0.0.1:27017').logs.nginx
+    log_stats(nginx_collection)
